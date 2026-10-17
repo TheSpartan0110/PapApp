@@ -1,0 +1,12 @@
+{
+  "name": "papapp-root",
+  "version": "1.2.0",
+  "description": "Sistema operativo interno de gestión para comercialización de papa",
+  "scripts": {
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  }
+}

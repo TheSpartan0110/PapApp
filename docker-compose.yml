@@ -1,0 +1,50 @@
+services:
+  papapp-db:
+    image: postgres:16-alpine
+    container_name: papapp-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-papapp_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-papapp_secret_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-papapp}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  papapp-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: papapp-backend
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://${POSTGRES_USER:-papapp_user}:${POSTGRES_PASSWORD:-papapp_secret_pass}@papapp-db:5432/${POSTGRES_DB:-papapp}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-papapp_jwt_offline_secret_key_2026}
+    depends_on:
+      papapp-db:
+        condition: service_healthy
+
+  papapp-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: papapp-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - papapp-backend
+
+volumes:
+  postgres_data:
+    driver: local

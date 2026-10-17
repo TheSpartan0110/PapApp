@@ -1,0 +1,338 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Rol {
+  ADMINISTRADOR
+  AUXILIAR_CONTABLE
+  OPERADOR_VENTAS
+}
+
+enum EstadoUsuario {
+  ACTIVO
+  INACTIVO
+}
+
+enum NivelRiesgo {
+  EXCELENTE
+  BUENO
+  REGULAR
+  RESTRINGIDO
+  BLOQUEADO
+}
+
+enum FormaPago {
+  CONTADO
+  CREDITO
+}
+
+enum TipoMovimientoInventario {
+  COMPRA
+  VENTA
+  CLASIFICACION_SALIDA
+  CLASIFICACION_ENTRADA
+  MERMA
+  AJUSTE
+}
+
+enum MotivoMerma {
+  DANO
+  DESCOMPOSICION
+  ERROR_OPERATIVO
+  AJUSTE_AUTORIZADO
+  OTROS
+}
+
+enum TipoMovimientoCaja {
+  INGRESO
+  EGRESO
+}
+
+model Usuario {
+  id           String        @id @default(uuid())
+  nombre       String
+  username     String        @unique
+  passwordHash String        @map("password_hash")
+  rol          Rol           @default(OPERADOR_VENTAS)
+  estado       EstadoUsuario @default(ACTIVO)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  ventas         Venta[]
+  compras        Compra[]
+  clasificaciones ClasificacionInventario[]
+  cierresCaja    CierreCaja[]
+  auditorias     Auditoria[]
+
+  @@map("usuarios")
+}
+
+model Producto {
+  id              String   @id @default(uuid())
+  nombre          String   @unique
+  descripcion     String?
+  pesoBultoKg     Decimal  @default(50.0) @db.Decimal(10, 2) @map("peso_bulto_kg")
+  activo          Boolean  @default(true)
+  observaciones   String?
+  stockActual     Decimal  @default(0.0) @db.Decimal(12, 3) @map("stock_actual") // En bultos fraccionados
+  costoPromedio   Decimal  @default(0.0) @db.Decimal(14, 2) @map("costo_promedio") // Costo promedio ponderado por bulto
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  detallesCompra           DetalleCompra[]
+  detallesVenta            DetalleVenta[]
+  movimientosInventario    MovimientoInventario[]
+  clasificacionesOrigen    ClasificacionInventario[] @relation("ClasificacionOrigen")
+  detallesClasificacion    DetalleClasificacionDestino[]
+  mermas                   Merma[]
+
+  @@map("productos")
+}
+
+model Cliente {
+  id          String      @id @default(uuid())
+  nombre      String
+  telefono    String?
+  direccion   String?
+  observaciones String?
+  nivelRiesgo NivelRiesgo @default(BUENO) @map("nivel_riesgo")
+  saldoActual Decimal     @default(0.0) @db.Decimal(14, 2) @map("saldo_actual") // Cuentas por cobrar
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  ventas  Venta[]
+  abonos  AbonoCliente[]
+
+  @@map("clientes")
+}
+
+model Proveedor {
+  id          String   @id @default(uuid())
+  nombre      String
+  telefono    String?
+  direccion   String?
+  observaciones String?
+  saldoActual Decimal  @default(0.0) @db.Decimal(14, 2) @map("saldo_actual") // Cuentas por pagar
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  compras Compra[]
+  pagos   PagoProveedor[]
+
+  @@map("proveedores")
+}
+
+model Compra {
+  id            String    @id @default(uuid())
+  numero        Int       @default(autoincrement())
+  fecha         DateTime  @default(now())
+  proveedorId   String    @map("proveedor_id")
+  proveedor     Proveedor @relation(fields: [proveedorId], references: [id])
+  formaPago     FormaPago @map("forma_pago")
+  total         Decimal   @db.Decimal(14, 2)
+  observaciones String?
+  usuarioId     String    @map("usuario_id")
+  usuario       Usuario   @relation(fields: [usuarioId], references: [id])
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  detalles      DetalleCompra[]
+
+  @@map("compras")
+}
+
+model DetalleCompra {
+  id             String   @id @default(uuid())
+  compraId       String   @map("compra_id")
+  compra         Compra   @relation(fields: [compraId], references: [id], onDelete: Cascade)
+  productoId     String   @map("producto_id")
+  producto       Producto @relation(fields: [productoId], references: [id])
+  cantidadBultos Decimal  @db.Decimal(12, 3) @map("cantidad_bultos")
+  precioUnitario Decimal  @db.Decimal(14, 2) @map("precio_unitario")
+  subtotal       Decimal  @db.Decimal(14, 2)
+
+  @@map("detalles_compra")
+}
+
+model Venta {
+  id            String    @id @default(uuid())
+  numero        Int       @default(autoincrement())
+  fecha         DateTime  @default(now())
+  clienteId     String    @map("cliente_id")
+  cliente       Cliente   @relation(fields: [clienteId], references: [id])
+  formaPago     FormaPago @map("forma_pago")
+  total         Decimal   @db.Decimal(14, 2)
+  descuento     Decimal   @default(0.0) @db.Decimal(14, 2)
+  observaciones String?
+  usuarioId     String    @map("usuario_id")
+  vendedor      Usuario   @relation(fields: [usuarioId], references: [id])
+  anulada       Boolean   @default(false)
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  detalles      DetalleVenta[]
+
+  @@map("ventas")
+}
+
+model DetalleVenta {
+  id             String   @id @default(uuid())
+  ventaId        String   @map("venta_id")
+  venta          Venta    @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  productoId     String   @map("producto_id")
+  producto       Producto @relation(fields: [productoId], references: [id])
+  cantidadBultos Decimal  @db.Decimal(12, 3) @map("cantidad_bultos")
+  precioUnitario Decimal  @db.Decimal(14, 2) @map("precio_unitario")
+  costoUnitario  Decimal  @db.Decimal(14, 2) @map("costo_unitario") // Costo al momento de venta para rentabilidad
+  descuento      Decimal  @default(0.0) @db.Decimal(14, 2)
+  subtotal       Decimal  @db.Decimal(14, 2)
+
+  @@map("detalles_venta")
+}
+
+model AbonoCliente {
+  id            String   @id @default(uuid())
+  numero        Int      @default(autoincrement())
+  fecha         DateTime @default(now())
+  clienteId     String   @map("cliente_id")
+  cliente       Cliente  @relation(fields: [clienteId], references: [id])
+  valor         Decimal  @db.Decimal(14, 2)
+  saldoAnterior Decimal  @db.Decimal(14, 2) @map("saldo_anterior")
+  saldoActual   Decimal  @db.Decimal(14, 2) @map("saldo_actual")
+  observaciones String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("abonos_clientes")
+}
+
+model PagoProveedor {
+  id             String    @id @default(uuid())
+  numero         Int       @default(autoincrement())
+  fecha          DateTime  @default(now())
+  proveedorId    String    @map("proveedor_id")
+  proveedor      Proveedor @relation(fields: [proveedorId], references: [id])
+  valor          Decimal   @db.Decimal(14, 2)
+  saldoPendiente Decimal   @db.Decimal(14, 2) @map("saldo_pendiente")
+  observaciones  String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@map("pagos_proveedores")
+}
+
+model Prestamo {
+  id            String   @id @default(uuid())
+  beneficiario  String   // "PROPIETARIO" o nombre de tercero/banco
+  esPropietario Boolean  @default(false) @map("es_propietario")
+  montoOriginal Decimal  @db.Decimal(14, 2) @map("monto_original")
+  saldoActual   Decimal  @db.Decimal(14, 2) @map("saldo_actual")
+  observaciones String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("prestamos")
+}
+
+model MovimientoInventario {
+  id              String                   @id @default(uuid())
+  fecha           DateTime                 @default(now())
+  productoId      String                   @map("producto_id")
+  producto        Producto                 @relation(fields: [productoId], references: [id])
+  tipo            TipoMovimientoInventario
+  cantidadBultos  Decimal                  @db.Decimal(12, 3) @map("cantidad_bultos")
+  saldoResultante Decimal                  @db.Decimal(12, 3) @map("saldo_resultante")
+  costoUnitario   Decimal                  @db.Decimal(14, 2) @map("costo_unitario")
+  referenciaId    String?                  @map("referencia_id")
+  observaciones   String?
+
+  @@map("movimientos_inventario")
+}
+
+model ClasificacionInventario {
+  id               String   @id @default(uuid())
+  fecha            DateTime @default(now())
+  productoOrigenId String   @map("producto_origen_id")
+  productoOrigen   Producto @relation("ClasificacionOrigen", fields: [productoOrigenId], references: [id])
+  cantidadOrigen   Decimal  @db.Decimal(12, 3) @map("cantidad_origen")
+  cantidadPerdida  Decimal  @default(0.0) @db.Decimal(12, 3) @map("cantidad_perdida")
+  observaciones    String?
+  usuarioId        String   @map("usuario_id")
+  usuario          Usuario  @relation(fields: [usuarioId], references: [id])
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  destinos         DetalleClasificacionDestino[]
+
+  @@map("clasificaciones_inventario")
+}
+
+model DetalleClasificacionDestino {
+  id                String                  @id @default(uuid())
+  clasificacionId   String                  @map("clasificacion_id")
+  clasificacion     ClasificacionInventario @relation(fields: [clasificacionId], references: [id], onDelete: Cascade)
+  productoDestinoId String                  @map("producto_destino_id")
+  productoDestino   Producto                @relation(fields: [productoDestinoId], references: [id])
+  cantidadDestino   Decimal                 @db.Decimal(12, 3) @map("cantidad_destino")
+  costoAsignado     Decimal                 @db.Decimal(14, 2) @map("costo_asignado")
+
+  @@map("detalles_clasificacion_destino")
+}
+
+model Merma {
+  id             String      @id @default(uuid())
+  fecha          DateTime    @default(now())
+  productoId     String      @map("producto_id")
+  producto       Producto    @relation(fields: [productoId], references: [id])
+  cantidadBultos Decimal     @db.Decimal(12, 3) @map("cantidad_bultos")
+  costoUnitario  Decimal     @db.Decimal(14, 2) @map("costo_unitario")
+  motivo         MotivoMerma
+  observaciones  String?
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  @@map("mermas")
+}
+
+model MovimientoCaja {
+  id            String             @id @default(uuid())
+  fecha         DateTime           @default(now())
+  tipo          TipoMovimientoCaja
+  categoria     String             // Venta Contado, Abono, Pago Proveedor, Flete, Lavada, Salario, etc.
+  monto         Decimal            @db.Decimal(14, 2)
+  descripcion   String?
+  referenciaId  String?            @map("referencia_id")
+  createdAt     DateTime           @default(now()) @map("created_at")
+
+  @@map("movimientos_caja")
+}
+
+model CierreCaja {
+  id            String   @id @default(uuid())
+  fecha         DateTime @default(now())
+  saldoInicial  Decimal  @db.Decimal(14, 2) @map("saldo_inicial")
+  entradas      Decimal  @db.Decimal(14, 2)
+  salidas       Decimal  @db.Decimal(14, 2)
+  saldoEsperado Decimal  @db.Decimal(14, 2) @map("saldo_esperado")
+  saldoReal     Decimal  @db.Decimal(14, 2) @map("saldo_real")
+  diferencia    Decimal  @db.Decimal(14, 2)
+  observaciones String?
+  usuarioId     String   @map("usuario_id")
+  usuario       Usuario  @relation(fields: [usuarioId], references: [id])
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("cierres_caja")
+}
+
+model Auditoria {
+  id            String   @id @default(uuid())
+  fecha         DateTime @default(now())
+  usuarioId     String   @map("usuario_id")
+  usuario       Usuario  @relation(fields: [usuarioId], references: [id])
+  accion        String   // CREAR, ANULAR, CORREGIR, REVERTIR
+  entidad       String   // Venta, Compra, MovimientoCaja, etc.
+  entidadId     String   @map("entidad_id")
+  valorAnterior String?  @map("valor_anterior") // JSON format
+  valorNuevo    String?  @map("valor_nuevo")    // JSON format
+  motivo        String
+
+  @@map("auditorias")
+}

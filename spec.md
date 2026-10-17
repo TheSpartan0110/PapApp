@@ -1,8 +1,8 @@
-**PapApp - Spec.md v1.1**
+**PapApp - Spec.md v1.2**
 
 Estado: Aprobado para diseño e implementación
 
-Versión: 1.1
+Versión: 1.2
 
 Fecha: Octubre 2026
 
@@ -124,17 +124,15 @@ Permisos:
 ## **Operador de Ventas**
 Permisos:
 
-- Registrar ventas.
-
-- Modificar ventas del día.
+- Registrar ventas (contado y crédito).
 
 - Consultar clientes.
 
-- Registrar ventas de contado.
-
-- Registrar ventas a crédito.
+- Modificar datos no monetarios de ventas del día (ej. notas, datos del cliente).
 
 Restricciones:
+
+- No puede modificar precios, cantidades o valores de ventas ya registradas sin autorización del Administrador (para no descuadrar caja ni inventario).
 
 - No puede anular movimientos financieros.
 
@@ -243,11 +241,16 @@ Resultado:
 
 | 1     `15 bultos Capira Primera`2     `3 bultos Capira Menuda`3     `1 bulto Capira Rechazo`4     `0.5 bultos Capira Sobras`5     `0.5 bultos Pérdida` |
 | --- |
-## Regla
+## Regla de Balance de Masa
 La suma de productos generados más la pérdida debe ser igual a la cantidad clasificada.
 
 | 1     `Inventario Clasificado`2     3     `=`4     5     `Productos Generados`6     7     `+`8     9     `Pérdida` |
 | --- |
+
+## Regla de Valoración de Costos en Clasificación
+- **Absorción de Pérdida:** El producto principal clasificado (ej. Capira Primera) absorbe el costo monetario de la merma/pérdida, lo cual eleva su costo unitario útil real.
+- **Subproductos:** Los subproductos derivados (Menuda, Rechazo, Sobras) ingresan al inventario a un costo base de referencia proporcional o menor acorde a su valor comercial estimado.
+
 ## Datos de Clasificación
 
 
@@ -256,6 +259,9 @@ La suma de productos generados más la pérdida debe ser igual a la cantidad cla
 # 10. Compras
 ## Objetivo
 Registrar entradas de inventario.
+
+**Nota:** El precio de compra de la papa sucia registrado aquí NO es el costo final de inventario. El costo unitario real de entrada se calcula mediante el Costo Integral de Adquisición (ver Sección 18).
+
 ## Datos Mínimos
 
 
@@ -284,6 +290,9 @@ Genera:
 
 | 1     `Salida Inventario`2     `+`3     `Cuenta por Cobrar` |
 | --- |
+## Estructura de Transacción
+Toda venta (y compra) es **Multi-ítem**: un encabezado de transacción (cliente, fecha, forma de pago, total) con $N$ líneas de detalle (producto, cantidad en bultos, precio unitario pactado, descuento, subtotal).
+
 ## Política de Precios
 No existe lista fija de precios.
 
@@ -302,7 +311,7 @@ El precio es negociado según:
 ## Datos de Venta
 
 
-| 1     `Fecha`2     `Cliente`3     `Producto`4     `Cantidad (Bultos)`5     `Precio Unitario`6     `Descuento`7     `Total`8     `Forma de Pago`9     `Observaciones`10     `Vendedor` |
+| 1     `Fecha`2     `Cliente`3     `Detalle Productos`4     `Total Transacción`5     `Forma de Pago`6     `Observaciones`7     `Vendedor` |
 | --- |
 # 12. Clientes
 ## Datos
@@ -427,22 +436,74 @@ Conciliar ingresos, egresos y saldo final.
 | 1     `Fecha`2     `Saldo Inicial`3     `Entradas`4     `Salidas`5     `Saldo Esperado`6     `Saldo Real`7     `Diferencia`8     `Observaciones`9     `Usuario` |
 | --- |
 # 18. Método de Costeo
-## Método Oficial
+## Costo Integral de Adquisición
+El costo unitario de inventario NO es únicamente el precio de compra de la papa sucia.
+
+El costo real de entrada al inventario es el **Costo Integral de Adquisición**, que incluye todos los costos necesarios para tener la papa lista para venta:
+
+### Componentes del Costo Integral
+
+| Componente | Descripción |
+| --- | --- |
+| Costo Papa Sucia | Precio de compra al proveedor |
+| Lavada | Costo del proceso de lavado |
+| Flete | Costo de transporte |
+| Descargue | Costo de cargue y descargue |
+
+### Fórmula del Costo Unitario de Entrada
+
+```
+Costo Unitario de Entrada (Papa Lavada)
+=
+(Costo Papa Sucia + Lavada + Flete + Descargue)
+/
+Cantidad de Bultos Procesados
+```
+
+### Ejemplo
+Se compran 100 bultos de Capira Primera:
+
+| Concepto | Valor |
+| --- | --- |
+| Costo Papa Sucia (100 bultos × $80.000) | $8.000.000 |
+| Lavada | $500.000 |
+| Flete | $300.000 |
+| Descargue | $200.000 |
+| **Total Costo Integral** | **$9.000.000** |
+| **Costo Unitario de Entrada** | **$90.000 / bulto** |
+
+### Regla
+El sistema debe tomar la suma total de los costos asociados a una entrada de inventario (compra + lavada + flete + descargue), dividirla entre la cantidad de bultos procesados, y el valor resultante es el costo unitario de entrada que se utilizará para calcular el Costo de Ventas y la Utilidad.
+
+## Método Oficial de Valoración
 
 
 | 1     `Promedio Ponderado` |
 | --- |
-## Fórmula
+
+Una vez calculado el Costo Unitario de Entrada (papa lavada), este valor alimenta el cálculo de Promedio Ponderado del inventario.
+
+## Fórmula del Promedio Ponderado
 
 
-| 1     `Costo Promedio`2     3     `=`4     5     `Valor Total Inventario`6     7     `/`8     9     `Cantidad Disponible` |
-| --- |
+```
+Costo Promedio
+=
+(Valor Inventario Existente + Valor Nueva Entrada)
+/
+(Cantidad Existente + Cantidad Nueva Entrada)
+```
+
+Donde **Valor Nueva Entrada** = Costo Unitario de Entrada (papa lavada) × Cantidad de bultos ingresados.
+
 ## Aplicaciones
 - Valoración de inventario.
 
-- Utilidad.
+- Costo de Ventas.
 
-- Rentabilidad.
+- Utilidad bruta.
+
+- Rentabilidad por producto, cliente y período.
 
 - Reportes financieros.
 
@@ -615,10 +676,10 @@ Implementar monolito modular.
 - Integración futura con SIGO.
 
 # ADR-002
-## Offline First
+## Operación Local On-Premises (LAN Offline)
 Estado: Aceptado
 ### Decisión
-La aplicación debe operar sin Internet.
+La aplicación operará en red local privada (LAN) dentro de la bodega/punto de venta. No requiere acceso a Internet para ninguna de sus funciones operativas, contables ni de reportes.
 
 # ADR-003
 ## Costeo por Promedio Ponderado
@@ -639,10 +700,21 @@ Toda la operación utilizará bultos como unidad principal.
 Los kilogramos tendrán carácter informativo únicamente.
 
 # ADR-005
-## Sin Gestión de Lotes
+## Sin Gestión de Lotes en Ventas
 Estado: Aceptado
 ### Decisión
-Mantener únicamente existencias totales por producto.
+Mantener existencias acumuladas por producto para efectos de venta y kardex general.
+
+# ADR-006
+## Stack Tecnológico Dockerizado
+Estado: Aceptado
+### Decisión
+Implementar el sistema mediante contenedores Docker orquestados con **Docker Compose**:
+- **Backend:** Node.js (TypeScript) con Fastify / Express (Monolito modular).
+- **Frontend:** React + Vite + TailwindCSS (Web Responsive para PC, Tablet y Móvil).
+- **Base de Datos:** PostgreSQL 16 con volumen persistente local.
+- **ORM:** Prisma / Drizzle ORM con migraciones automáticas.
+- **PDFs:** Generación nativa en servidor (PDFKit) sin internet.
 
 # Criterios Globales de Aceptación
 ✅ Registrar compras de contado y crédito.
